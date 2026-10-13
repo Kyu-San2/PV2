@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Solar Dashboard · Gurten (4942)</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #F6F7F8;
+    --card: #FFFFFF;
+    --text: #18212B;
+    --muted: #5B6672;
+    --line: #E2E7EC;
+    --south: #E8A33D;   /* warme Südseite – Sonne */
+    --south-soft: #f7e6c4;
+    --west: #1458C0;    /* kühle Westseite */
+    --west-soft: #d6e2f5;
+    --total: #18212B;
+    --good: #217F73;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(24,33,43,.06), 0 8px 24px rgba(24,33,43,.06);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 60px; }
+
+  /* Header */
+  header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 22px; }
+  .title h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+  .title .loc { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 12px; font-size: 13px; color: var(--muted);
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+
+  /* Settings strip */
+  .settings {
+    display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 16px; margin-bottom: 20px;
+  }
+  .settings label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .settings input[type="range"] { width: 130px; }
+  .settings .val { font-size: 13px; font-weight: 600; color: var(--text); min-width: 34px; }
+  .settings .note { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+  /* Overview cards */
+  .overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px; box-shadow: var(--shadow);
+  }
+  .card .k { font-size: 13px; color: var(--muted); margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+  .card .big { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .card .sub { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+
+  /* Now row */
+  .now { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .now-left { display: flex; align-items: center; gap: 18px; }
+  .now-icon { font-size: 56px; line-height: 1; }
+  .now-temp { font-size: 44px; font-weight: 700; letter-spacing: -0.02em; }
+  .now-desc { font-size: 14px; color: var(--muted); }
+  .now-meta { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .now-right { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mini { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .mini .k { font-size: 12px; color: var(--muted); }
+  .mini .v { font-size: 20px; font-weight: 700; margin-top: 2px; }
+
+  /* 7-day strip */
+  .day-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 20px; }
+  .day {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 8px; text-align: center;
+  }
+  .day .d { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .day .ic { font-size: 28px; margin: 6px 0; }
+  .day .t { font-size: 14px; font-weight: 700; }
+  .day .t span { color: var(--muted); font-weight: 400; }
+  .day .e { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+  /* Charts */
+  .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-grid .card.wide { grid-column: 1 / -1; }
+  .card h3 { margin: 0 0 4px; font-size: 16px; }
+  .card .hint { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+  canvas { max-width: 100%; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  td.num.strong { font-weight: 700; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.south { background: var(--south-soft); color: #7a5311; }
+  .pill.west { background: var(--west-soft); color: #0d3f94; }
+
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
+  .tag.past   { background: #eceff2; color: #6b7480; }
+  .tag.today  { background: var(--south-soft); color: #7a5311; }
+  .tag.future { background: #e2f1ec; color: #1b665c; }
+  .tr-today td { background: #fbf3e0; }
+  .tr-past td { color: #8892a0; }
+  .tr-past td .pill { opacity: .65; }
+
+  footer { margin-top: 26px; font-size: 12px; color: var(--muted); }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 760px) {
+    .overview, .now, .chart-grid { grid-template-columns: 1fr; }
+    .day-strip { grid-template-columns: repeat(4, 1fr); }
+    .chart-grid .card.wide { grid-column: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="title">
+      <h1>☀️ Solar Dashboard</h1>
+      <p class="loc">Gurten · 4942 · Oberösterreich &nbsp;·&nbsp; 48,24° N · 13,35° O · ~400 m</p>
+    </div>
+    <div class="badge"><span class="dot"></span><span id="status">Lade Wetterdaten…</span></div>
+  </header>
+
+  <div class="settings">
+    <label>Neigung Südseite
+      <input type="range" id="tiltSouth" min="0" max="60" step="1" value="35">
+      <span class="val" id="tiltSouthVal">35°</span>
+    </label>
+    <label>Azimut Südseite
+      <input type="range" id="azimuthSouth" min="-180" max="180" step="1" value="0">
+      <span class="val" id="azimuthSouthVal">0°</span>
+    </label>
+    <label>Neigung Westseite
+      <input type="range" id="tiltWest" min="0" max="60" step="1" value="35">
+      <span class="val" id="tiltWestVal">35°</span>
+    </label>
+    <label>Azimut Westseite
+      <input type="range" id="azimuthWest" min="-180" max="180" step="1" value="90">
+      <span class="val" id="azimuthWestVal">90°</span>
+    </label>
+    <span class="note">Azimut: 0° = Süd, + = West, − = Ost · Systemeffizienz 90 % (ohne Temp.), Temp.-Koeff. −0,4 %/°C</span>
+  </div>
+
+  <div class="overview">
+    <div class="card">
+      <p class="k"><span class="swatch" style="background:var(--south)"></span>Südseite</p>
+      <p class="big" style="color:var(--south)">4,05 <small>kWp</small></p>
+      <p class="sub">9 Module × 450 W</p>
+    </div>
+    <div class="card">
+      <p class="k"><span class="swatch" style="background:var(--west)"></span>Westseite</p>
+      <p class="big" style="color:var(--west)">4,05 <small>kWp</small></p>
+      <p class="sub">9 Module × 450 W</p>
+    </div>
+    <div class="card">
+      <p class="k"><span class="swatch" style="background:var(--total)"></span>Gesamt</p>
+      <p class="big">8,10 <small>kWp</small></p>
+      <p class="sub">18 Module × 450 W</p>
+    </div>
+  </div>
+
+  <div class="now">
+    <div class="card now-left">
+      <div>
+        <div class="now-icon" id="nowIcon">🌤️</div>
+        <div class="now-temp" id="nowTemp">–°</div>
+        <div class="now-desc" id="nowDesc">–</div>
+        <div class="now-meta" id="nowMeta">–</div>
+      </div>
+    </div>
+    <div class="now-right">
+      <div class="mini"><div class="k">Aktuelle PV-Leistung (S+W)</div><div class="v" id="nowPower">– kW</div></div>
+      <div class="mini"><div class="k">Erwarteter Ertrag heute</div><div class="v" id="nowYield">– kWh</div></div>
+      <div class="mini"><div class="k">Bewölkung</div><div class="v" id="nowCloud">– %</div></div>
+      <div class="mini"><div class="k">Niederschlag (Heute)</div><div class="v" id="nowPrecip">– mm</div></div>
+    </div>
+  </div>
+
+  <div class="day-strip" id="dayStrip"></div>
+
+  <div class="chart-grid">
+    <div class="card wide">
+      <h3>Verlauf nächste 48 Stunden</h3>
+      <p class="hint">Erwartete PV-Leistung Süd + West + Gesamt, sowie Globalstrahlung aufs Modul</p>
+      <canvas id="chart48"></canvas>
+    </div>
+    <div class="card">
+      <h3>Tagesertrag · nächste 7 Tage</h3>
+      <p class="hint">Energie in kWh pro Tag (Süd + West)</p>
+      <canvas id="chartDaily"></canvas>
+    </div>
+    <div class="card">
+      <h3>Wetter &amp; Einstrahlung</h3>
+      <p class="hint">Bewölkung (%) und Globalstrahlung (W/m²) der nächsten 48 h</p>
+      <canvas id="chartWeather"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Tagesübersicht</h3>
+    <p class="hint">Vergangene 7 Tage (Re-Analyse) + Heute + 7-Tage-Vorhersage · Ertrag ist eine Simulation</p>
+    <div style="overflow-x:auto">
+      <table id="dayTable">
+        <thead>
+          <tr>
+            <th>Tag</th><th>Wetter</th><th>T&nbsp;max</th><th>T&nbsp;min</th>
+            <th>Bewölk.</th><th>Regen</th><th>GHI</th>
+            <th>Ertrag Süd</th><th>Ertrag West</th><th>Gesamt</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Wetter- &amp; Strahlungsdaten: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> (Forecast).
+    Ertragsschätzung ist eine vereinfachte Simulation (Isotropes Himmelsmodell) und ersetzt keine exakte Planungssoftware.
+  </footer>
+</div>
+
+<script>
+/* ============================= Konfiguration ============================= */
+const CONFIG = {
+  lat: 48.2411, lon: 13.3447,
+  arrays: [
+    { name: 'Süd',   kWp: 9 * 450 / 1000, modules: 9, watt: 450, azimuth: () => +document.getElementById('azimuthSouth').value, tilt: () => +document.getElementById('tiltSouth').value, color: '#E8A33D' },
+    { name: 'West',  kWp: 9 * 450 / 1000, modules: 9, watt: 450, azimuth: () => +document.getElementById('azimuthWest').value,  tilt: () => +document.getElementById('tiltWest').value,  color: '#1458C0' }
+  ],
+  // Systemparameter
+  effSys: 0.90,            // Systemeffizienz ohne Temperatur (Wechselrichter, Kabel, Mismatch, Verschmutzung …)
+  tempCoeff: 0.004,        // -0,4 %/°C (Temperatur wird separat modelliert)
+  albedo: 0.20,
+  NOCT: 45                  // Modultemperatur bei 800 W/m²
+};
+
+const WMO = {
+  0:  ['Klar', '☀️'], 1: ['Überwiegend klar', '🌤️'], 2: ['Teilweise bewölkt', '⛅'], 3: ['Bedeckt', '☁️'],
+  45: ['Nebel', '🌫️'], 48: ['Reifnebel', '🌫️'],
+  51: ['Leichter Sprühregen', '🌦️'], 53: ['Sprühregen', '🌦️'], 55: ['Starker Sprühregen', '🌧️'],
+  61: ['Leichter Regen', '🌦️'], 63: ['Regen', '🌧️'], 65: ['Starker Regen', '🌧️'],
+  66: ['Gefrierender Regen', '🌧️'], 67: ['Starker gefrierender Regen', '🌧️'],
+  71: ['Leichter Schneefall', '🌨️'], 73: ['Schneefall', '🌨️'], 75: ['Starker Schneefall', '❄️'],
+  77: ['Schneegriesel', '🌨️'],
+  80: ['Leichte Schauer', '🌦️'], 81: ['Regenschauer', '🌧️'], 82: ['Starke Schauer', '⛈️'],
+  85: ['Schneeschauer', '🌨️'], 86: ['Starke Schneeschauer', '❄️'],
+  95: ['Gewitter', '⛈️'], 96: ['Gewitter mit Hagel', '⛈️'], 99: ['Schweres Gewitter mit Hagel', '⛈️']
+};
+
+/* ============================= Hilfsfunktionen ============================= */
+function rad2deg(r){ return r * 180/Math.PI; }
+function mod(a, n){ return ((a % n) + n) % n; }
+
+/* ============================= Einfallswinkel aufs Modul ============================= */
+function angleOfIncidence(declRad, latr, ha, beta, gamma) {
+  // gamma: Flächenazimut in rad, 0 = Süd, + = West
+  const cosAOI =
+      Math.sin(declRad)*Math.sin(latr)*Math.cos(beta)
+    - Math.sin(declRad)*Math.cos(latr)*Math.sin(beta)*Math.cos(gamma)
+    + Math.cos(declRad)*Math.cos(latr)*Math.cos(beta)*Math.cos(ha)
+    + Math.cos(declRad)*Math.sin(latr)*Math.sin(beta)*Math.cos(gamma)*Math.cos(ha)
+    + Math.cos(declRad)*Math.sin(beta)*Math.sin(gamma)*Math.sin(ha);
+  return cosAOI;
+}
+
+// Einstrahlung aufs geneigte Modul [W/m²] (isotropes Himmelsmodell)
+function poaIrradiance(date, lat, lon, ghi, dni, dhi, beta, azimuthDeg) {
+  if (ghi <= 0 && dni <= 0 && dhi <= 0) return 0;
+  const rad = Math.PI/180;
+
+  // Deklination & Stundenwinkel nochmals (konsistent)
+  const jd = date.getTime()/86400000 + 2440587.5;
+  const T = (jd - 2451545.0)/36525.0;
+  const L0 = mod(280.46646 + T*(36000.76983 + T*0.0003032), 360);
+  const M  = 357.52911 + T*(35999.05029 - 0.0001537*T);
+  const Mr = M*rad;
+  const e  = 0.016708634 - T*(0.000042037 + 0.0000001267*T);
+  const C  = (1.914602 - T*(0.004817 + 0.000014*T))*Math.sin(Mr)
+           + (0.019993 - 0.000101*T)*Math.sin(2*Mr) + 0.000289*Math.sin(3*Mr);
+  const omega = 125.04 - 1934.136*T;
+  const lambda = (L0 + C) - 0.00569 - 0.00478*Math.sin(omega*rad);
+  const obliq0 = 23 + 26/60 + 21.448/3600 - (46.815*T + 0.00059*T*T - 0.001813*T*T*T)/3600;
+  const obliq  = obliq0 + 0.00256*Math.cos(omega*rad);
+  const decl = Math.asin(Math.sin(obliq*rad)*Math.sin(lambda*rad));
+  const eqTime = 4*rad2deg(
+      Math.tan(obliq*rad/2)**2*Math.sin(2*L0*rad)
+    - 2*e*Math.sin(Mr)
+    + 4*e*Math.tan(obliq*rad/2)**2*Math.sin(Mr)*Math.cos(2*L0*rad)
+    - 0.5*Math.tan(obliq*rad/2)**4*Math.sin(4*L0*rad)
+    - 1.25*e*e*Math.sin(2*Mr)
+  );
+  const utcMin = date.getUTCHours()*60 + date.getUTCMinutes() + date.getUTCSeconds()/60;
+  const ha = ((utcMin + eqTime + 4*lon)/4 - 180)*rad;
+
+  const latr = lat*rad;
+  const betaR = beta*rad;
+  const gamma = azimuthDeg*rad;   // 0° = Süd, + = West, − = Ost
+
+  const cosAOI = angleOfIncidence(decl, latr, ha, betaR, gamma);
+
+  const beam = Math.max(0, dni * cosAOI);
+  const diff = dhi * (1 + Math.cos(betaR))/2;
+  const refl = ghi * CONFIG.albedo * (1 - Math.cos(betaR))/2;
+
+  return Math.max(0, beam + diff + refl);
+}
+
+// AC-Leistung am Wechselrichter [W] für eine Teilanlage
+function acPower(kWp, irradiance, tempAmb) {
+  if (irradiance <= 0) return 0;
+  const tCell = tempAmb + (irradiance/800)*(CONFIG.NOCT - 20);
+  const derate = 1 - CONFIG.tempCoeff*(tCell - 25);
+  return kWp * (irradiance/1000) * derate * CONFIG.effSys * 1000; // Watt
+}
+
+/* ============================= Daten laden ============================= */
+async function loadForecast() {
+  const params = new URLSearchParams({
+    latitude: CONFIG.lat, longitude: CONFIG.lon,
+    hourly: 'temperature_2m,cloud_cover,precipitation_probability,precipitation,weather_code,shortwave_radiation,direct_radiation,diffuse_radiation',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,precipitation_sum',
+    timezone: 'Europe/Vienna', forecast_days: '7', past_days: '7'
+  });
+  const res = await fetch('https://api.open-meteo.com/v1/forecast?' + params.toString());
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+/* ============================= Berechnung ============================= */
+function process(data) {
+  const h = data.hourly;
+  const n = h.time.length;
+
+  const now = new Date();
+  const todayKey = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const date = new Date(h.time[i]);
+    const key = date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
+    const ghi = h.shortwave_radiation[i] ?? 0;
+    const dni = h.direct_radiation[i] ?? 0;
+    const dhi = h.diffuse_radiation[i] ?? 0;
+    const temp = h.temperature_2m[i] ?? 0;
+
+    const arrays = CONFIG.arrays.map(a => {
+      const poa = poaIrradiance(date, CONFIG.lat, CONFIG.lon, ghi, dni, dhi, a.tilt(), a.azimuth());
+      const p = acPower(a.kWp, poa, temp);
+      return { name: a.name, poa, power: p, color: a.color };
+    });
+
+    rows.push({
+      date, key,
+      ghi, temp,
+      cloud: h.cloud_cover[i] ?? 0,
+      precip: h.precipitation[i] ?? 0,
+      precipProb: h.precipitation_probability[i] ?? 0,
+      code: h.weather_code[i],
+      arrays,
+      totalPower: arrays.reduce((s, a) => s + a.power, 0)
+    });
+  }
+
+  // Tagesaggregation
+  const daily = data.daily.time.map((t, i) => {
+    const dayKey = t.slice(0, 10);
+    const dayRows = rows.filter(r => r.key === dayKey);
+    const kWh = (w) => dayRows.reduce((s, r) => s + r.arrays.find(a => a.name === w).power/1000, 0);
+    const nRows = Math.max(1, dayRows.length);
+    return {
+      date: t,
+      type: t < todayKey ? 'past' : (t === todayKey ? 'today' : 'future'),
+      code: data.daily.weather_code[i],
+      tmax: data.daily.temperature_2m_max[i],
+      tmin: data.daily.temperature_2m_min[i],
+      sunrise: data.daily.sunrise[i],
+      sunset: data.daily.sunset[i],
+      precipSum: data.daily.precipitation_sum[i],
+      precipProbMax: data.daily.precipitation_probability_max[i],
+      ghiSum: dayRows.reduce((s, r) => s + r.ghi, 0) / 1000,   // kWh/m² (Wh/m² ÷ 1000)
+      cloudMean: Math.round(dayRows.reduce((s, r) => s + r.cloud, 0) / nRows),
+      south: kWh('Süd'), west: kWh('West'), total: kWh('Süd') + kWh('West')
+    };
+  });
+
+  return { rows, daily };
+}
+
+/* ============================= Rendering ============================= */
+const charts = [];
+function render(data) {
+  const { rows, daily } = process(data);
+
+  // --- Jetzt / aktuell ---
+  const nowIdx = rows.reduce((best, r, i) =>
+    Math.abs(r.date - Date.now()) < Math.abs(rows[best].date - Date.now()) ? i : best, 0);
+  const now = rows[nowIdx];
+  const [desc, icon] = WMO[now.code] || ['–', '🌡️'];
+  document.getElementById('nowIcon').textContent = icon;
+  document.getElementById('nowTemp').textContent = Math.round(now.temp) + '°';
+  document.getElementById('nowDesc').textContent = desc;
+  document.getElementById('nowMeta').textContent =
+    `Gefühlt ~${Math.round(now.temp)}° · Bewölkung ${now.cloud}% · Regenwahrsch. ${now.precipProb}%`;
+  document.getElementById('nowPower').textContent = (now.totalPower/1000).toFixed(2) + ' kW';
+  document.getElementById('nowCloud').textContent = now.cloud + ' %';
+  const todayDaily = daily.find(d => d.type === 'today') || daily[daily.length - 1];
+  document.getElementById('nowPrecip').textContent =
+    (todayDaily.precipSum ?? 0).toFixed(1) + ' mm';
+  document.getElementById('nowYield').textContent = todayDaily.total.toFixed(1) + ' kWh';
+
+  // --- 7-Tage-Vorhersage-Streifen (heute + Zukunft) ---
+  const forecastDays = daily.filter(d => d.type !== 'past');
+  const strip = document.getElementById('dayStrip');
+  strip.innerHTML = '';
+  forecastDays.forEach((d, i) => {
+    const [dd, ic] = WMO[d.code] || ['–','🌡️'];
+    const dname = i === 0 ? 'Heute' :
+      new Date(d.date+'T12:00:00').toLocaleDateString('de-AT', { weekday: 'short' });
+    const el = document.createElement('div');
+    el.className = 'day';
+    el.innerHTML = `
+      <div class="d">${dname}</div>
+      <div class="ic">${ic}</div>
+      <div class="t">${Math.round(d.tmax)}° <span>${Math.round(d.tmin)}°</span></div>
+      <div class="e">${d.total.toFixed(1)} kWh</div>`;
+    strip.appendChild(el);
+  });
+
+  // --- Tabelle (vergangene 7 Tage + Heute + Vorhersage) ---
+  const tb = document.querySelector('#dayTable tbody');
+  tb.innerHTML = '';
+  daily.forEach((d) => {
+    const [dd, ic] = WMO[d.code] || ['–','🌡️'];
+    const dname = new Date(d.date+'T12:00:00').toLocaleDateString('de-AT', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    const tag = d.type === 'today' ? '<span class="tag today">Heute</span>'
+              : d.type === 'past'  ? '<span class="tag past">Re-Analyse</span>'
+              : '<span class="tag future">Prognose</span>';
+    const tr = document.createElement('tr');
+    if (d.type === 'today') tr.className = 'tr-today';
+    else if (d.type === 'past') tr.className = 'tr-past';
+    tr.innerHTML = `
+      <td>${dname} ${tag}</td>
+      <td>${ic} ${dd}</td>
+      <td>${Math.round(d.tmax)}°</td>
+      <td>${Math.round(d.tmin)}°</td>
+      <td>${d.cloudMean}%</td>
+      <td>${(d.precipSum ?? 0).toFixed(1)} mm</td>
+      <td>${d.ghiSum.toFixed(1)} kWh/m²</td>
+      <td><span class="pill south">${d.south.toFixed(1)} kWh</span></td>
+      <td><span class="pill west">${d.west.toFixed(1)} kWh</span></td>
+      <td class="num strong">${d.total.toFixed(1)} kWh</td>`;
+    tb.appendChild(tr);
+  });
+
+  // --- Diagramme ---
+  chart(rows, forecastDays);
+  document.getElementById('status').textContent = 'Live · Open-Meteo';
+}
+
+function chart(rows, daily) {
+  charts.forEach(c => c.destroy());
+  charts.length = 0;
+
+  // Nächste ~48 h ab jetzt
+  const nowHour = new Date(); nowHour.setMinutes(0, 0, 0);
+  const start = Math.max(0, rows.findIndex(r => r.date >= nowHour));
+  const window48 = rows.slice(start, start + 48);
+  const labels = window48.map(r =>
+    r.date.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit' }) + ' ' +
+    r.date.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' }));
+  Chart.defaults.font.family = "-apple-system, 'Segoe UI', Roboto, sans-serif";
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = '#5B6672';
+
+  const southArr = CONFIG.arrays[0], westArr = CONFIG.arrays[1];
+  const southPoa = window48.map(r => r.arrays[0].poa);
+  const westPoa  = window48.map(r => r.arrays[1].poa);
+
+  const c1 = new Chart(document.getElementById('chart48'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Süd (kW)', data: window48.map(r => r.arrays[0].power/1000), borderColor: southArr.color, backgroundColor: southArr.color, tension: .3, pointRadius: 0, borderWidth: 2, fill: false, yAxisID: 'y' },
+        { label: 'West (kW)', data: window48.map(r => r.arrays[1].power/1000), borderColor: westArr.color, backgroundColor: westArr.color, tension: .3, pointRadius: 0, borderWidth: 2, fill: false, yAxisID: 'y' },
+        { label: 'Gesamt (kW)', data: window48.map(r => r.totalPower/1000), borderColor: '#18212B', backgroundColor: '#18212B', tension: .3, pointRadius: 0, borderWidth: 2.5, fill: false, yAxisID: 'y' },
+        { label: 'Einstrahlung Süd (W/m² ÷10)', data: southPoa.map(v => v/10), borderColor: '#C9A35F', borderDash: [5,4], tension: .3, pointRadius: 0, borderWidth: 1.2, fill: false, yAxisID: 'y2' }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12, maxRotation: 0 } },
+        y: { title: { display: true, text: 'kW' }, beginAtZero: true },
+        y2: { position: 'right', title: { display: true, text: 'W/m²' }, beginAtZero: true, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+  charts.push(c1);
+
+  // Tagesertrag 7 Tage
+  const c2 = new Chart(document.getElementById('chartDaily'), {
+    type: 'bar',
+    data: {
+      labels: daily.map((d, i) => i === 0 ? 'Heute' : new Date(d.date+'T12:00:00').toLocaleDateString('de-AT', { weekday: 'short' })),
+      datasets: [
+        { label: 'Süd', data: daily.map(d => +d.south.toFixed(1)), backgroundColor: southArr.color, stack: 's' },
+        { label: 'West', data: daily.map(d => +d.west.toFixed(1)), backgroundColor: westArr.color, stack: 's' }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: 'kWh' }, beginAtZero: true } }
+    }
+  });
+  charts.push(c2);
+
+  // Wetter + Einstrahlung
+  const c3 = new Chart(document.getElementById('chartWeather'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Bewölkung (%)', data: window48.map(r => r.cloud), borderColor: '#8A97A5', backgroundColor: 'rgba(138,151,165,.15)', tension: .3, pointRadius: 0, borderWidth: 1.5, fill: true, yAxisID: 'y' },
+        { label: 'GHI (W/m²)', data: window48.map(r => r.ghi), borderColor: '#E8A33D', tension: .3, pointRadius: 0, borderWidth: 1.5, fill: false, yAxisID: 'y2' }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12, maxRotation: 0 } },
+        y: { title: { display: true, text: '%' }, suggestedMax: 100, beginAtZero: true },
+        y2: { position: 'right', title: { display: true, text: 'W/m²' }, beginAtZero: true, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+  charts.push(c3);
+}
+
+/* ============================= Init ============================= */
+let cachedData = null;
+
+async function init() {
+  const tiltSouth    = document.getElementById('tiltSouth');
+  const tiltWest     = document.getElementById('tiltWest');
+  const azimuthSouth = document.getElementById('azimuthSouth');
+  const azimuthWest  = document.getElementById('azimuthWest');
+
+  const onSet = () => {
+    document.getElementById('tiltSouthVal').textContent    = tiltSouth.value + '°';
+    document.getElementById('tiltWestVal').textContent     = tiltWest.value + '°';
+    document.getElementById('azimuthSouthVal').textContent = azimuthSouth.value + '°';
+    document.getElementById('azimuthWestVal').textContent  = azimuthWest.value + '°';
+    if (cachedData) render(cachedData);   // neu berechnen ohne erneuten Netzabruf
+  };
+
+  [tiltSouth, tiltWest, azimuthSouth, azimuthWest]
+    .forEach(el => el.addEventListener('input', onSet));
+
+  await loadAndRender();
+
+  async function loadAndRender() {
+    try {
+      document.getElementById('status').textContent = 'Lade Wetterdaten…';
+      cachedData = await loadForecast();
+      render(cachedData);
+    } catch (e) {
+      document.getElementById('status').textContent = 'Fehler beim Laden';
+      console.error(e);
+    }
+  }
+}
+
+init();
+</script>
+</body>
+</html>
